@@ -60,17 +60,24 @@ void kernel_start(const char* command) {
     console_clear();
 
     // (re-)initialize kernel page table
-    for (uintptr_t addr = 0; addr < MEMSIZE_PHYSICAL; addr += PAGESIZE) {
-        int perm = PTE_P | PTE_W | PTE_U;
-        if (addr == 0) {
-            // nullptr is inaccessible even to the kernel
-            perm = 0;
+    for (vmiter it(kernel_pagetable, 0); it.va() < MEMSIZE_PHYSICAL; it += PAGESIZE) {
+        int perm = 0;
+        if (it.va() == 0) {
+             // nullptr is inaccessible even to the kernel
+            it.map(it.va(), perm);
+            continue;
         }
-        // install identity mapping
-        int r = vmiter(kernel_pagetable, addr).try_map(addr, perm);
+
+        if (it.va() == CONSOLE_ADDR || it.va() >= PROC_START_ADDR) {
+            perm = PTE_P | PTE_W | PTE_U;
+        } else {
+            perm = PTE_P | PTE_W;
+        }
+
+        int r = it.try_map(it.va(), perm);
         assert(r == 0); // mappings during kernel_start MUST NOT fail
                         // (Note that later mappings might fail!!)
-        }
+    }
 
     // set up process descriptors
     for (pid_t i = 0; i < PID_MAX; i++) {
